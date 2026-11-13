@@ -3,6 +3,7 @@ import glob
 import re
 import time
 import base64
+import time
 import warnings
 from collections import Counter
 import numpy as np
@@ -57,6 +58,51 @@ st.markdown("""
         visibility: hidden !important;
         opacity: 0 !important;
         pointer-events: none !important;
+    }
+
+    /* Shimmer Skeleton Loaders */
+    @keyframes skeleton-shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    .skeleton-box {
+        background: linear-gradient(90deg, rgba(30, 41, 59, 0.7) 25%, rgba(56, 189, 248, 0.22) 50%, rgba(30, 41, 59, 0.7) 75%);
+        background-size: 200% 100%;
+        animation: skeleton-shimmer 1.4s infinite ease-in-out;
+        border-radius: 12px;
+        border: 1px solid rgba(56, 189, 248, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    .skeleton-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 22px;
+    }
+    .skeleton-kpi-card {
+        height: 120px;
+    }
+    .skeleton-banner {
+        height: 75px;
+        margin-bottom: 22px;
+    }
+    .skeleton-advice-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 22px;
+    }
+    .skeleton-advice-card {
+        height: 95px;
+    }
+    .skeleton-chart-container {
+        height: 310px;
+        margin-top: 16px;
+        margin-bottom: 22px;
+    }
+    .skeleton-table {
+        height: 240px;
+        margin-bottom: 22px;
     }
 
     /* Shimmer Skeleton Loaders */
