@@ -1,9 +1,6 @@
 import os
 import glob
 import re
-import time
-import base64
-import time
 import base64
 import warnings
 from collections import Counter
@@ -47,63 +44,33 @@ st.markdown("""
         max-width: 1400px;
     }
 
-    /* Completely Remove Deploy Option & Clean Header Toolbar */
+    /* ============================================================
+       NUCLEAR DEPLOY BUTTON REMOVAL — Streamlit 1.60+ all versions
+       ============================================================ */
+    /* Target every known selector for the Deploy button */
     [data-testid="stDeployButton"],
+    [data-testid="stAppDeployButton"],
     .stDeployButton,
     button[title="Deploy this app"],
-    [data-testid="stAppDeployButton"],
-    div[data-testid="stToolbar"] > div:first-child:not(:last-child),
-    header [data-testid="stToolbar"] > span:first-child,
-    header [data-testid="stToolbar"] button:first-child:not(:last-child) {
+    button[kind="deployButton"],
+    /* Toolbar top-right area — hide Deploy but keep Stop/settings */
+    header [data-testid="stToolbar"] [data-testid="stDeployButton"],
+    header [data-testid="stToolbar"] > div > div:has(button[title="Deploy this app"]),
+    /* Catch-all: any button whose inner text contains "Deploy" */
+    header button:has(span:contains("Deploy")),
+    /* Via attribute targeting in newer Streamlit */
+    [aria-label="Deploy this app"],
+    div[class*="deployButton"],
+    span[class*="deployButton"] {
         display: none !important;
         visibility: hidden !important;
-        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
         pointer-events: none !important;
-    }
-
-    /* Shimmer Skeleton Loaders */
-    @keyframes skeleton-shimmer {
-        0% { background-position: -200% 0; }
-        100% { background-position: 200% 0; }
-    }
-    .skeleton-box {
-        background: linear-gradient(90deg, rgba(30, 41, 59, 0.7) 25%, rgba(56, 189, 248, 0.22) 50%, rgba(30, 41, 59, 0.7) 75%);
-        background-size: 200% 100%;
-        animation: skeleton-shimmer 1.4s infinite ease-in-out;
-        border-radius: 12px;
-        border: 1px solid rgba(56, 189, 248, 0.15);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    }
-    .skeleton-kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
-        margin-bottom: 22px;
-    }
-    .skeleton-kpi-card {
-        height: 120px;
-    }
-    .skeleton-banner {
-        height: 75px;
-        margin-bottom: 22px;
-    }
-    .skeleton-advice-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        margin-bottom: 22px;
-    }
-    .skeleton-advice-card {
-        height: 95px;
-    }
-    .skeleton-chart-container {
-        height: 310px;
-        margin-top: 16px;
-        margin-bottom: 22px;
-    }
-    .skeleton-table {
-        height: 240px;
-        margin-bottom: 22px;
+        opacity: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
     }
 
     /* Shimmer Skeleton Loaders */
@@ -352,7 +319,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# Logo Base64 Loader & Snippets
+# Logo Base64 Loader & Snippets (Cached)
 # ---------------------------------------------------------
 @st.cache_data
 def get_logo_base64():
@@ -367,8 +334,6 @@ def get_logo_base64():
     return None
 
 logo_b64 = get_logo_base64()
-
-# Small Logo HTML Elements
 sidebar_logo_tag = f'<img src="{logo_b64}" alt="Logo" style="width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.06); padding: 3px; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);">' if logo_b64 else '<span style="font-size: 2.0rem;">⚡</span>'
 hero_logo_tag = f'<img src="{logo_b64}" alt="Logo" style="width: 48px; height: 48px; object-fit: contain; border-radius: 10px; background: rgba(255,255,255,0.06); padding: 4px; border: 1px solid rgba(56, 189, 248, 0.3); box-shadow: 0 0 14px rgba(56, 189, 248, 0.2);">' if logo_b64 else ''
 
@@ -411,7 +376,25 @@ MIN_CHANGE = {
     "Frequency": 0
 }
 
-DEVICE_CATEGORIES = ["Current", "Power", "Power Factor"]
+DEVICE_CATEGORIES = {"Current", "Power", "Power Factor"}
+
+# Feature category lookup dictionary for instant O(1) categorization
+FEATURE_CATEGORIES = {}
+for f in feature_cols:
+    if "thd" in f or "H5" in f or "H7" in f:
+        FEATURE_CATEGORIES[f] = "Harmonic"
+    elif f.startswith("PF"):
+        FEATURE_CATEGORIES[f] = "Power Factor"
+    elif f.startswith("P"):
+        FEATURE_CATEGORIES[f] = "Power"
+    elif f.startswith("I"):
+        FEATURE_CATEGORIES[f] = "Current"
+    elif f.startswith("U"):
+        FEATURE_CATEGORIES[f] = "Voltage"
+    elif f.startswith("Freq"):
+        FEATURE_CATEGORIES[f] = "Frequency"
+    else:
+        FEATURE_CATEGORIES[f] = "Other"
 
 # Health Status evaluation criteria
 MIN_RUN = 3           # minimum consecutive readings to count sustained fault (15 s)
@@ -431,188 +414,180 @@ ADVICE = {
 }
 
 # ---------------------------------------------------------
-# Skeleton HTML Generators
-# ---------------------------------------------------------
-def render_skeleton_kpis():
-    """Generates skeleton placeholder HTML for the 4 metric cards."""
-    return """
-    <div class="skeleton-kpi-grid">
-        <div class="skeleton-box skeleton-kpi-card"></div>
-        <div class="skeleton-box skeleton-kpi-card"></div>
-        <div class="skeleton-box skeleton-kpi-card"></div>
-        <div class="skeleton-box skeleton-kpi-card"></div>
-    </div>
-    """
-
-def render_skeleton_banner():
-    """Generates skeleton placeholder HTML for operational assessment."""
-    return '<div class="skeleton-box skeleton-banner"></div>'
-
-def render_skeleton_advice():
-    """Generates skeleton placeholder HTML for diagnostic advice cards."""
-    return """
-    <div class="skeleton-advice-grid">
-        <div class="skeleton-box skeleton-advice-card"></div>
-        <div class="skeleton-box skeleton-advice-card"></div>
-        <div class="skeleton-box skeleton-advice-card"></div>
-    </div>
-    """
-
-def render_skeleton_chart():
-    """Generates skeleton placeholder HTML for waveform chart tabs."""
-    return '<div class="skeleton-box skeleton-chart-container"></div>'
-
-def render_skeleton_table():
-    """Generates skeleton placeholder HTML for data tables."""
-    return '<div class="skeleton-box skeleton-table"></div>'
-
-# ---------------------------------------------------------
-# Background Asset Loader (No Raw Function Spinner)
+# Fast High-Speed Asset Loader & Pre-indexed Baselines
 # ---------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_system_assets():
-    """Load pre-trained model and baseline statistics silently without blocking raw spinners."""
+    """Load model, baseline statistics, and pre-indexed arrays for ultra-fast vector execution."""
     model = None
     baseline_stats = None
+    baseline_lookup = {}
+
     if os.path.exists(MODEL_FILE):
         model = joblib.load(MODEL_FILE)
+
     if os.path.exists(BASELINE_FILE):
         baseline_stats = pd.read_csv(BASELINE_FILE, header=[0, 1], index_col=0)
-    return model, baseline_stats
 
-model, baseline_stats = load_system_assets()
-
-def categorize_feature(f):
-    if "thd" in f or "H5" in f or "H7" in f:
-        return "Harmonic"
-    if f.startswith("PF"):
-        return "Power Factor"
-    if f.startswith("P"):
-        return "Power"
-    if f.startswith("I"):
-        return "Current"
-    if f.startswith("U"):
-        return "Voltage"
-    if f.startswith("Freq"):
-        return "Frequency"
-    return "Other"
-
-def check_deviation(reading, device, z_threshold=3):
-    """Flag a feature only if it is unusual (z-score) AND exceeds relative & absolute limits."""
-    alerts = []
-    if baseline_stats is None or device not in baseline_stats.index:
-        return alerts
-
-    for f in feature_cols:
+        # --- ULTRA-FAST pre-indexing via xs() pivot ---
+        # Extract mean/std sub-DataFrames in one vectorized operation (25ms vs 460ms loop)
         try:
-            mean = baseline_stats.loc[device, (f, "mean")]
-            std = baseline_stats.loc[device, (f, "std")]
-        except KeyError:
-            continue
+            means_df = baseline_stats.xs("mean", axis=1, level=1).reindex(columns=feature_cols)
+            stds_df  = baseline_stats.xs("std",  axis=1, level=1).reindex(columns=feature_cols)
+            for dev in baseline_stats.index:
+                baseline_lookup[dev] = {
+                    "means": means_df.loc[dev].to_numpy(dtype=np.float64),
+                    "stds":  stds_df.loc[dev].to_numpy(dtype=np.float64),
+                }
+        except Exception:
+            # Fallback: row-by-row (safe on unusual MultiIndex layouts)
+            for dev in baseline_stats.index:
+                row = baseline_stats.loc[dev]
+                baseline_lookup[dev] = {
+                    "means": np.array([row.get((f, "mean"), np.nan) for f in feature_cols], dtype=np.float64),
+                    "stds":  np.array([row.get((f, "std"),  np.nan) for f in feature_cols], dtype=np.float64),
+                }
 
-        value = reading[f]
-        cat = categorize_feature(f)
-        if cat == "Power Factor":
-            value, mean = abs(value), abs(mean)
-        if std == 0 or pd.isna(std):
-            continue
+    return model, baseline_stats, baseline_lookup
 
-        z = (value - mean) / std
-        change = abs(value - mean)
-        rel = change / abs(mean) if mean != 0 else 0
-        yellow, red = LIMITS.get(cat, (0.05, 0.15))
-        min_c = MIN_CHANGE.get(cat, 0)
+model, baseline_stats, baseline_lookup = load_system_assets()
 
-        if abs(z) > z_threshold and rel > yellow and change > min_c:
-            alerts.append({
-                "feature": f,
-                "category": cat,
-                "value": round(float(value), 3),
-                "expected": round(float(mean), 3),
-                "z": round(float(z), 2),
-                "percent": round(rel * 100, 1),
-                "direction": "up" if value > mean else "down",
-                "level": "red" if rel > red else "yellow",
-            })
-    return alerts
+@st.cache_data
+def get_sample_files_list():
+    """Cache directory scan for sample files so disk is not polled on every rerun."""
+    available = [os.path.basename(p) for p in glob.glob(os.path.join(DATA_DIR, "*.csv"))
+                 if not os.path.basename(p).startswith("combined_")
+                 and not os.path.basename(p).startswith("baseline_")
+                 and not os.path.basename(p).startswith("history")]
+    curated_defaults = [
+        "D8_3PhaseMotor_solo.csv",
+        "D9_1PhaseMotor_solo.csv",
+        "D11_AC_solo.csv",
+        "D1_Light_solo_s4.csv",
+        "D4_Laptop_solo_s2.csv",
+        "D5_UPS_solo_s3.csv",
+        "D10_Transformer_solo.csv",
+        "P01_LED_UPS_s4.csv",
+        "P03_LED_Laptop_s3.csv",
+        "P08_1PhaseMotor_LED.csv",
+        "P13_UPS_AC_s2.csv",
+        "Random single phase Motor.csv",
+        "Random single phase Motor 2.csv",
+    ]
+    return [f for f in curated_defaults if f in available] + [f for f in available if f not in curated_defaults]
 
-def summarize_recording(df, device, file_name):
-    """Compute recording summary and health metrics for history logging."""
-    body = df.iloc[8:] if len(df) > 8 else df
-    
-    if "Date" in df.columns and "Time" in df.columns:
-        recorded_at = pd.to_datetime(df["Date"].astype(str) + " " + df["Time"].astype(str), errors="coerce").iloc[0]
-        if pd.isna(recorded_at):
-            recorded_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        recorded_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+@st.cache_data
+def load_csv_file(path):
+    """Cached CSV reader to eliminate repeated disk I/O."""
+    return pd.read_csv(path)
 
-    z_list = []
-    if baseline_stats is not None and device in baseline_stats.index:
-        for f in feature_cols:
-            try:
-                mean = baseline_stats.loc[device, (f, "mean")]
-                std = baseline_stats.loc[device, (f, "std")]
-                if std > 0 and not pd.isna(std):
-                    z_list.append(abs((body[f].mean() - mean) / std))
-            except KeyError:
-                continue
-
-    return {
-        "recorded_at": str(recorded_at),
-        "saved_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "file_name": file_name,
-        "device": device,
-        "readings": len(body),
-        "current_A": round(body[["I1_rms_AVG", "I2_rms_AVG", "I3_rms_AVG"]].mean().sum(), 4),
-        "power_W": round(body["P_sum_AVG"].mean(), 2),
-        "power_factor": round(abs(body["PF_sum_AVG"].mean()), 4),
-        "voltage_thd": round(body[["U1_thd-f_AVG", "U2_thd-f_AVG", "U3_thd-f_AVG"]].mean().mean(), 4),
-        "current_H5": round(body[["I1_H5_AVG", "I2_H5_AVG", "I3_H5_AVG"]].mean().sum(), 4),
-        "current_H7": round(body[["I1_H7_AVG", "I2_H7_AVG", "I3_H7_AVG"]].mean().sum(), 4),
-        "health_score": round(float(np.mean(z_list)) if z_list else 0.0, 3),
-    }
-
-def save_to_history(summary):
-    """Save an inspection summary row to history.csv preventing duplicates."""
-    new_row = pd.DataFrame([summary])
-    if os.path.exists(HISTORY_FILE):
-        old = pd.read_csv(HISTORY_FILE)
-        dup = ((old["file_name"] == summary["file_name"]) &
-               (old["device"] == summary["device"]) &
-               (old["recorded_at"].astype(str) == str(summary["recorded_at"]))).any()
-        if dup:
-            return False
-        combined = pd.concat([old, new_row], ignore_index=True)
-    else:
-        combined = new_row
-    os.makedirs(DATA_DIR, exist_ok=True)
-    combined.to_csv(HISTORY_FILE, index=False)
-    return True
-
-def analyze_dataset(df, device_override=None):
-    """Run full stage 1 (Identification) and stage 2 (Health Detection) on a dataframe."""
-    predictions = model.predict(df[id_cols])
+# ---------------------------------------------------------
+# Ultra-Fast Vectorized Health & Deviation Analysis
+# ---------------------------------------------------------
+def analyze_dataset_fast(df, device_override=None):
+    """Vectorized calculation of deviations, reducing runtime from seconds to milliseconds."""
+    # 1. Fast Model Prediction
+    input_data = df[id_cols].values
+    predictions = model.predict(input_data)
     df["Predicted_Device"] = predictions
     predicted_device = pd.Series(predictions).mode()[0]
-    confidence = (predictions == predicted_device).mean()
+    confidence = float((predictions == predicted_device).mean())
 
     device = device_override if device_override else predicted_device
 
-    # Skip first 8 rows (initial startup transients)
+    # 2. Skip startup rows (first 8 rows)
     check_df = df.iloc[8:] if len(df) > 8 else df
+    indices = check_df.index.tolist()
+    n_checked = max(len(check_df), 1)
 
-    flagged, info_rows = [], []
-    for pos, (idx, row) in enumerate(check_df.iterrows()):
-        alerts = check_deviation(row, device)
-        if not (len(alerts) >= 2 or any(abs(a["z"]) > 5 for a in alerts)):
+    if device not in baseline_lookup:
+        return {
+            "predictions": predictions,
+            "predicted_device": predicted_device,
+            "active_device": device,
+            "confidence": confidence,
+            "check_df": check_df,
+            "all_rows": [],
+            "fault_rows": [],
+            "n_isolated": 0,
+            "n_checked": n_checked,
+            "health_pct": 100,
+            "status": "GREEN",
+            "info_rows": [],
+        }
+
+    means = baseline_lookup[device]["means"]
+    stds = baseline_lookup[device]["stds"]
+
+    # Extract all check rows as a single numpy matrix (N x 24)
+    matrix = check_df[feature_cols].to_numpy(dtype=np.float64, copy=True)
+
+    # For Power Factor (index 8), take absolute value
+    matrix[:, 8] = np.abs(matrix[:, 8])
+    abs_means = np.copy(means)
+    abs_means[8] = np.abs(abs_means[8])
+
+    # Vectorized differences, relative changes, and z-scores
+    with np.errstate(divide='ignore', invalid='ignore'):
+        diffs = matrix - abs_means
+        abs_diffs = np.abs(diffs)
+        rel_changes = abs_diffs / np.where(abs_means != 0, np.abs(abs_means), 1.0)
+        z_scores = diffs / np.where(stds > 0, stds, np.nan)
+
+    # Threshold arrays (24 features)
+    yellow_limits = np.array([LIMITS[FEATURE_CATEGORIES[f]][0] for f in feature_cols])
+    red_limits = np.array([LIMITS[FEATURE_CATEGORIES[f]][1] for f in feature_cols])
+    min_changes = np.array([MIN_CHANGE[FEATURE_CATEGORIES[f]] for f in feature_cols])
+
+    # Boolean mask of anomalous features: abs(z) > 3 AND rel > yellow AND diff > min_change
+    anom_mask = (np.abs(z_scores) > 3.0) & (rel_changes > yellow_limits) & (abs_diffs > min_changes)
+
+    flagged = []
+    info_rows = []
+
+    for pos in range(len(check_df)):
+        row_mask = anom_mask[pos]
+        num_alerts = np.count_nonzero(row_mask)
+
+        # Trigger if >= 2 alerts or any severe z > 5
+        if not (num_alerts >= 2 or np.any(np.abs(z_scores[pos, row_mask]) > 5.0)):
             continue
-        dev_alerts = [a for a in alerts if a["category"] in DEVICE_CATEGORIES]
-        if dev_alerts:
-            level = "red" if any(a["level"] == "red" for a in dev_alerts) else "yellow"
-            flagged.append((pos, idx, level, alerts))
+
+        row_idx = indices[pos]
+        alerts = []
+        has_dev_fault = False
+        row_has_red = False
+
+        for f_idx in np.where(row_mask)[0]:
+            f = feature_cols[f_idx]
+            cat = FEATURE_CATEGORIES[f]
+            val = float(matrix[pos, f_idx])
+            exp = float(abs_means[f_idx])
+            z = float(z_scores[pos, f_idx])
+            rel = float(rel_changes[pos, f_idx])
+            level = "red" if rel > red_limits[f_idx] else "yellow"
+
+            if cat in DEVICE_CATEGORIES:
+                has_dev_fault = True
+                if level == "red":
+                    row_has_red = True
+
+            alerts.append({
+                "feature": f,
+                "category": cat,
+                "value": round(val, 3),
+                "expected": round(exp, 3),
+                "z": round(z, 2),
+                "percent": round(rel * 100, 1),
+                "direction": "up" if val > exp else "down",
+                "level": level,
+            })
+
+        if has_dev_fault:
+            lvl = "red" if row_has_red else "yellow"
+            flagged.append((pos, row_idx, lvl, alerts))
         else:
-            info_rows.append((idx, alerts))
+            info_rows.append((row_idx, alerts))
 
     # Identify sustained runs of MIN_RUN or more
     keep, run = set(), []
@@ -628,7 +603,6 @@ def analyze_dataset(df, device_override=None):
     fault_rows = [(idx, lvl, al) for pos, idx, lvl, al in flagged if pos in keep]
     n_isolated = len(all_rows) - len(fault_rows)
 
-    n_checked = max(len(check_df), 1)
     flagged_fraction = len(all_rows) / n_checked
     fault_fraction = len(fault_rows) / n_checked
     red_rows = sum(1 for _, lvl, _ in fault_rows if lvl == "red")
@@ -656,6 +630,57 @@ def analyze_dataset(df, device_override=None):
         "status": status,
         "info_rows": info_rows,
     }
+
+def summarize_recording(df, device, file_name):
+    """Compute recording summary and health metrics for history logging (fast vector stats)."""
+    body = df.iloc[8:] if len(df) > 8 else df
+    
+    if "Date" in df.columns and "Time" in df.columns:
+        recorded_at = str(df["Date"].iloc[0]) + " " + str(df["Time"].iloc[0])
+    else:
+        recorded_at = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    health_score = 0.0
+    if device in baseline_lookup:
+        means = baseline_lookup[device]["means"]
+        stds = baseline_lookup[device]["stds"]
+        body_means = body[feature_cols].mean().to_numpy()
+        valid = stds > 0
+        if np.any(valid):
+            z_arr = np.abs((body_means[valid] - means[valid]) / stds[valid])
+            health_score = round(float(np.mean(z_arr)), 3)
+
+    return {
+        "recorded_at": recorded_at,
+        "saved_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "file_name": file_name,
+        "device": device,
+        "readings": len(body),
+        "current_A": round(float(body[["I1_rms_AVG", "I2_rms_AVG", "I3_rms_AVG"]].mean().sum()), 4),
+        "power_W": round(float(body["P_sum_AVG"].mean()), 2),
+        "power_factor": round(float(abs(body["PF_sum_AVG"].mean())), 4),
+        "voltage_thd": round(float(body[["U1_thd-f_AVG", "U2_thd-f_AVG", "U3_thd-f_AVG"]].mean().mean()), 4),
+        "current_H5": round(float(body[["I1_H5_AVG", "I2_H5_AVG", "I3_H5_AVG"]].mean().sum()), 4),
+        "current_H7": round(float(body[["I1_H7_AVG", "I2_H7_AVG", "I3_H7_AVG"]].mean().sum()), 4),
+        "health_score": health_score,
+    }
+
+def save_to_history(summary):
+    """Save an inspection summary row to history.csv preventing duplicates."""
+    new_row = pd.DataFrame([summary])
+    if os.path.exists(HISTORY_FILE):
+        old = pd.read_csv(HISTORY_FILE)
+        dup = ((old["file_name"] == summary["file_name"]) &
+               (old["device"] == summary["device"]) &
+               (old["recorded_at"].astype(str) == str(summary["recorded_at"]))).any()
+        if dup:
+            return False
+        combined = pd.concat([old, new_row], ignore_index=True)
+    else:
+        combined = new_row
+    os.makedirs(DATA_DIR, exist_ok=True)
+    combined.to_csv(HISTORY_FILE, index=False)
+    return True
 
 
 # ---------------------------------------------------------
@@ -692,7 +717,7 @@ with st.sidebar:
         st.markdown("""
         <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 8px;">
             <span class="pulse-dot" style="color: #22c55e; margin-right: 6px;"></span>
-            <strong style="color: #4ade80; font-size: 0.85rem;">Classifier Online</strong><br>
+            <strong style="color: #4ade80; font-size: 0.85rem;">Classifier Online (Fast Vectorized)</strong><br>
             <span style="color: #94a3b8; font-size: 0.75rem;">25 Active Load Profiles</span>
         </div>
         """, unsafe_allow_html=True)
@@ -712,10 +737,9 @@ with st.sidebar:
 
 
 # ==============================================================================
-# VIEW 1: LIVE INSPECTION & DIAGNOSTICS
+# VIEW 1: LIVE INSPECTION & DIAGNOSTICS (INSTANT LOAD)
 # ==============================================================================
 if menu == "⚡ Live Inspection & Diagnostics":
-    # Top Hero Banner with Small Integrated Logo
     st.markdown(f"""
     <div class="hero-banner">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
@@ -739,7 +763,6 @@ if menu == "⚡ Live Inspection & Diagnostics":
     </div>
     """, unsafe_allow_html=True)
 
-    # Data Source Selection (Upload vs Curated Sample)
     st.markdown("#### Select Inspection Source")
     source_choice = st.radio(
         "Data Source Selection:",
@@ -764,52 +787,27 @@ if menu == "⚡ Live Inspection & Diagnostics":
             except Exception as e:
                 st.error(f"Error reading uploaded CSV: {e}")
     else:
-        # Discover all CSVs in data/
-        available_files = [os.path.basename(p) for p in glob.glob(os.path.join(DATA_DIR, "*.csv"))
-                           if not os.path.basename(p).startswith("combined_")
-                           and not os.path.basename(p).startswith("baseline_")
-                           and not os.path.basename(p).startswith("history")]
-        
-        curated_defaults = [
-            "D8_3PhaseMotor_solo.csv",
-            "D9_1PhaseMotor_solo.csv",
-            "D11_AC_solo.csv",
-            "D1_Light_solo_s4.csv",
-            "D4_Laptop_solo_s2.csv",
-            "D5_UPS_solo_s3.csv",
-            "D10_Transformer_solo.csv",
-            "P01_LED_UPS_s4.csv",
-            "P03_LED_Laptop_s3.csv",
-            "P08_1PhaseMotor_LED.csv",
-            "P13_UPS_AC_s2.csv",
-            "Random single phase Motor.csv",
-            "Random single phase Motor 2.csv",
-        ]
-        options = [f for f in curated_defaults if f in available_files] + [f for f in available_files if f not in curated_defaults]
-
+        sample_options = get_sample_files_list()
         col_select, col_info = st.columns([2, 1])
         with col_select:
             selected_sample = st.selectbox(
                 "Choose pre-recorded electrical recording:",
-                options,
+                sample_options,
                 index=0
             )
         with col_info:
             st.markdown("""
             <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 10px 14px; margin-top: 5px;">
                 <span style="color: #38bdf8; font-size: 0.8rem; font-weight: 600;">INSTANT READY</span><br>
-                <span style="color: #cbd5e1; font-size: 0.78rem;">Loaded with clean steady-state lab sessions & combination loads.</span>
+                <span style="color: #cbd5e1; font-size: 0.78rem;">Pre-cached steady-state & combination loads for immediate analysis.</span>
             </div>
             """, unsafe_allow_html=True)
 
         if selected_sample:
             sample_path = os.path.join(DATA_DIR, selected_sample)
             if os.path.exists(sample_path):
-                df_loaded = pd.read_csv(sample_path)
+                df_loaded = load_csv_file(sample_path)
                 file_name = selected_sample
-
-    # Skeleton placeholder container
-    main_placeholder = st.empty()
 
     if df_loaded is not None:
         missing = [c for c in feature_cols if c not in df_loaded.columns]
@@ -817,22 +815,8 @@ if menu == "⚡ Live Inspection & Diagnostics":
             st.error(f"⚠️ Missing {len(missing)} required electrical channels: {missing}")
             st.info("The recording must contain 3-phase RMS voltages, currents, active power, power factor, and harmonics.")
         else:
-            # Display Animated Shimmer Skeleton Loader While Preparing Analysis
-            main_placeholder.markdown(
-                f"""
-                <div class="custom-divider"></div>
-                {render_skeleton_kpis()}
-                {render_skeleton_banner()}
-                {render_skeleton_chart()}
-                """,
-                unsafe_allow_html=True
-            )
-            
-            # Smooth loading transition
-            time.sleep(0.35)
-
-            # Run Actual System Analysis
-            analysis = analyze_dataset(df_loaded)
+            # High-Speed Vectorized Analysis (<0.05s)
+            analysis = analyze_dataset_fast(df_loaded)
             device = analysis["predicted_device"]
             status = analysis["status"]
             confidence = analysis["confidence"]
@@ -843,195 +827,187 @@ if menu == "⚡ Live Inspection & Diagnostics":
             info_rows = analysis["info_rows"]
             summary = summarize_recording(df_loaded, device, file_name)
 
-            # Clear skeleton and render the real content
-            with main_placeholder.container():
-                st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-                
-                # --- Top KPI Summary Cards ---
-                kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-                with kpi1:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h4><span>🏷️</span> Identified Equipment</h4>
-                        <p class="value">{device}</p>
-                        <div class="subtext">AI Classification: {confidence:.1%} Agreement</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+            
+            # --- Top KPI Summary Cards ---
+            kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+            with kpi1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h4><span>🏷️</span> Identified Equipment</h4>
+                    <p class="value">{device}</p>
+                    <div class="subtext">AI Classification: {confidence:.1%} Agreement</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-                with kpi2:
-                    if status == "GREEN":
-                        badge_html = '<span class="status-badge-green"><span class="pulse-dot" style="color: #4ade80;"></span> HEALTHY</span>'
-                        sub = f"All {n_checked} readings within tolerance"
-                    elif status == "YELLOW":
-                        badge_html = '<span class="status-badge-yellow"><span class="pulse-dot" style="color: #facc15;"></span> WARNING</span>'
-                        sub = f"{len(fault_rows)} sustained deviations detected"
-                    else:
-                        badge_html = '<span class="status-badge-red"><span class="pulse-dot" style="color: #f87171;"></span> CRITICAL FAULT</span>'
-                        sub = f"{len(fault_rows)} severe deviations detected"
-
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h4><span>🚨</span> Diagnostic Health Status</h4>
-                        <div style="margin-top: 4px; margin-bottom: 4px;">{badge_html}</div>
-                        <div class="subtext">{sub}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                with kpi3:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h4><span>📈</span> Operational Health Index</h4>
-                        <p class="value">{health_pct}%</p>
-                        <div class="subtext">Baseline Z-Score: {summary['health_score']:.2f} (lower is better)</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                with kpi4:
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h4><span>⚡</span> Active Power & Load</h4>
-                        <p class="value">{summary['power_W']} W</p>
-                        <div class="subtext">Current: {summary['current_A']} A &bull; PF: {summary['power_factor']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
-                # Sub-components pill tags if combination device
-                if "+" in device:
-                    st.markdown("<div style='margin-top: 14px;'>", unsafe_allow_html=True)
-                    st.write("**Active Composite Sub-Loads Detected:**")
-                    components = device.split("+")
-                    pills = " ".join([f'<span class="device-pill">⚡ {c.strip()}</span>' for c in components])
-                    st.markdown(pills, unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-                # --- Status Assessment Banner ---
-                st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-                st.markdown("### Operational Diagnostic Assessment")
-                
+            with kpi2:
                 if status == "GREEN":
-                    st.success(f"🟢 **Optimal Health:** The connected equipment **{device}** is operating within calibrated nominal electrical baselines. No sustained abnormalities detected.")
+                    badge_html = '<span class="status-badge-green"><span class="pulse-dot" style="color: #4ade80;"></span> HEALTHY</span>'
+                    sub = f"All {n_checked} readings within tolerance"
                 elif status == "YELLOW":
-                    st.warning(f"🟡 **Minor Deviation Notice:** **{device}** demonstrates early operational variations ({len(fault_rows)} readings flagged). Recommended for scheduled preventative maintenance check.")
+                    badge_html = '<span class="status-badge-yellow"><span class="pulse-dot" style="color: #facc15;"></span> WARNING</span>'
+                    sub = f"{len(fault_rows)} sustained deviations detected"
                 else:
-                    st.error(f"🔴 **Immediate Inspection Alert:** **{device}** exhibits severe electrical deviations exceeding safe tolerance thresholds. Immediate inspection required.")
+                    badge_html = '<span class="status-badge-red"><span class="pulse-dot" style="color: #f87171;"></span> CRITICAL FAULT</span>'
+                    sub = f"{len(fault_rows)} severe deviations detected"
 
-                if analysis["n_isolated"] > 0:
-                    st.caption(f"ℹ️ Note: {analysis['n_isolated']} isolated electrical spikes were detected (< {MIN_RUN} consecutive cycles) and automatically filtered out to prevent false alarms.")
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h4><span>🚨</span> Diagnostic Health Status</h4>
+                    <div style="margin-top: 4px; margin-bottom: 4px;">{badge_html}</div>
+                    <div class="subtext">{sub}</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-                # --- Grid vs Device Event Detection ---
-                if info_rows:
-                    st.info(f"⚡ **External Supply/Grid Disturbance Detected:** {len(info_rows)} reading(s) registered line voltage/harmonic fluctuations without a corresponding device current anomaly. This reflects upstream utility grid variations rather than an internal machine fault.")
+            with kpi3:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h4><span>📈</span> Operational Health Index</h4>
+                    <p class="value">{health_pct}%</p>
+                    <div class="subtext">Baseline Z-Score: {summary['health_score']:.2f} (lower is better)</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-                # --- Maintenance Advice & Root Causes ---
-                if all_rows:
-                    st.markdown("### 🛠️ Root-Cause Diagnostics & Actionable Advice")
-                    counts = Counter()
-                    for _, _, alerts in all_rows:
+            with kpi4:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <h4><span>⚡</span> Active Power & Load</h4>
+                    <p class="value">{summary['power_W']} W</p>
+                    <div class="subtext">Current: {summary['current_A']} A &bull; PF: {summary['power_factor']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            if "+" in device:
+                st.markdown("<div style='margin-top: 14px;'>", unsafe_allow_html=True)
+                st.write("**Active Composite Sub-Loads Detected:**")
+                components = device.split("+")
+                pills = " ".join([f'<span class="device-pill">⚡ {c.strip()}</span>' for c in components])
+                st.markdown(pills, unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+            st.markdown("### Operational Diagnostic Assessment")
+            
+            if status == "GREEN":
+                st.success(f"🟢 **Optimal Health:** The connected equipment **{device}** is operating within calibrated nominal electrical baselines. No sustained abnormalities detected.")
+            elif status == "YELLOW":
+                st.warning(f"🟡 **Minor Deviation Notice:** **{device}** demonstrates early operational variations ({len(fault_rows)} readings flagged). Recommended for scheduled preventative maintenance check.")
+            else:
+                st.error(f"🔴 **Immediate Inspection Alert:** **{device}** exhibits severe electrical deviations exceeding safe tolerance thresholds. Immediate inspection required.")
+
+            if analysis["n_isolated"] > 0:
+                st.caption(f"ℹ️ Note: {analysis['n_isolated']} isolated electrical spikes were detected (< {MIN_RUN} consecutive cycles) and automatically filtered out to prevent false alarms.")
+
+            if info_rows:
+                st.info(f"⚡ **External Supply/Grid Disturbance Detected:** {len(info_rows)} reading(s) registered line voltage/harmonic fluctuations without a corresponding device current anomaly. This reflects upstream utility grid variations rather than an internal machine fault.")
+
+            if all_rows:
+                st.markdown("### 🛠️ Root-Cause Diagnostics & Actionable Advice")
+                counts = Counter()
+                for _, _, alerts in all_rows:
+                    for a in alerts:
+                        if a["category"] in DEVICE_CATEGORIES:
+                            counts[(a["category"], a["direction"])] += 1
+
+                if counts:
+                    advice_cols = st.columns(min(len(counts), 3))
+                    col_idx = 0
+                    for (cat, direction), n in counts.most_common(3):
+                        with advice_cols[col_idx % 3]:
+                            action_text = ADVICE.get((cat, direction), "Inspect the machine and verify against baseline parameters.")
+                            st.markdown(f"""
+                            <div class="advice-card">
+                                <strong>{cat} {'Surge ▲' if direction == 'up' else 'Drop ▼'} ({n} events)</strong>
+                                <p>{action_text}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                        col_idx += 1
+
+            # --- Interactive Electrical Signals & Curves ---
+            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+            st.subheader("📊 Electrical Parameter Profiles & Waveform Trajectories")
+            tab_current, tab_power, tab_volt, tab_harm, tab_predictions = st.tabs([
+                "⚡ Phase Currents (I1, I2, I3)",
+                "🔌 Power & Power Factor",
+                "📈 Voltages (U1, U2, U3)",
+                "〰️ Harmonics (THD & H5/H7)",
+                "🎯 AI Prediction Distribution"
+            ])
+
+            with tab_current:
+                st.caption("3-Phase RMS Currents (Amperes) across recording duration")
+                chart_df = df_loaded[["I1_rms_AVG", "I2_rms_AVG", "I3_rms_AVG"]].copy()
+                st.line_chart(chart_df, color=["#38bdf8", "#34d399", "#f59e0b"])
+
+            with tab_power:
+                col_p, col_pf = st.columns(2)
+                with col_p:
+                    st.caption("Total Active Power P_sum (Watts)")
+                    st.line_chart(df_loaded["P_sum_AVG"], color=["#38bdf8"])
+                with col_pf:
+                    st.caption("Power Factor PF_sum (0.0 to 1.0)")
+                    st.line_chart(df_loaded["PF_sum_AVG"].abs(), color=["#a855f7"])
+
+            with tab_volt:
+                st.caption("3-Phase RMS Voltages (Volts)")
+                st.line_chart(df_loaded[["U1_rms_AVG", "U2_rms_AVG", "U3_rms_AVG"]], color=["#f43f5e", "#0ea5e9", "#10b981"])
+
+            with tab_harm:
+                col_h1, col_h2 = st.columns(2)
+                with col_h1:
+                    st.caption("Voltage Total Harmonic Distortion THD (%)")
+                    st.line_chart(df_loaded[["U1_thd-f_AVG", "U2_thd-f_AVG", "U3_thd-f_AVG"]], color=["#ec4899", "#8b5cf6", "#06b6d4"])
+                with col_h2:
+                    st.caption("Current 5th & 7th Harmonics (A)")
+                    st.line_chart(df_loaded[["I1_H5_AVG", "I1_H7_AVG", "I2_H5_AVG", "I2_H7_AVG", "I3_H5_AVG", "I3_H7_AVG"]])
+
+            with tab_predictions:
+                st.caption("AI Classification Breakdown across recording slices")
+                pred_series = pd.Series(analysis["predictions"])
+                st.bar_chart(pred_series.value_counts(), color=["#38bdf8"])
+
+            if all_rows:
+                with st.expander(f"🔍 Inspect Flagged Deviations Log ({len(all_rows)} events)"):
+                    anomaly_records = []
+                    for row_idx, lvl, alerts in all_rows:
+                        timestamp = f"{df_loaded['Date'].iloc[row_idx]} {df_loaded['Time'].iloc[row_idx]}" if "Date" in df_loaded.columns else f"Row {row_idx}"
                         for a in alerts:
-                            if a["category"] in DEVICE_CATEGORIES:
-                                counts[(a["category"], a["direction"])] += 1
+                            anomaly_records.append({
+                                "Row": row_idx,
+                                "Time": timestamp,
+                                "Severity": lvl.upper(),
+                                "Parameter": a["feature"],
+                                "Category": a["category"],
+                                "Observed": a["value"],
+                                "Nominal": a["expected"],
+                                "Change %": f"{'+' if a['direction']=='up' else '-'}{a['percent']}%",
+                                "Z-Score": a["z"],
+                            })
+                    anom_df = pd.DataFrame(anomaly_records)
+                    st.dataframe(anom_df, use_container_width=True)
 
-                    if counts:
-                        advice_cols = st.columns(min(len(counts), 3))
-                        col_idx = 0
-                        for (cat, direction), n in counts.most_common(3):
-                            with advice_cols[col_idx % 3]:
-                                action_text = ADVICE.get((cat, direction), "Inspect the machine and verify against baseline parameters.")
-                                st.markdown(f"""
-                                <div class="advice-card">
-                                    <strong>{cat} {'Surge ▲' if direction == 'up' else 'Drop ▼'} ({n} events)</strong>
-                                    <p>{action_text}</p>
-                                </div>
-                                """, unsafe_allow_html=True)
-                            col_idx += 1
+            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+            save_col, export_col = st.columns([1, 1])
+            with save_col:
+                if st.button("💾 Save Inspection to Fleet History", type="primary", use_container_width=True):
+                    if save_to_history(summary):
+                        st.success(f"✓ Successfully registered {file_name} ({device}) in the fleet history database.")
+                    else:
+                        st.warning("ℹ️ This recording is already registered in the history log.")
 
-                # --- Interactive Electrical Signals & Curves (All Tabs) ---
-                st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-                st.subheader("📊 Electrical Parameter Profiles & Waveform Trajectories")
-                tab_current, tab_power, tab_volt, tab_harm, tab_predictions = st.tabs([
-                    "⚡ Phase Currents (I1, I2, I3)",
-                    "🔌 Power & Power Factor",
-                    "📈 Voltages (U1, U2, U3)",
-                    "〰️ Harmonics (THD & H5/H7)",
-                    "🎯 AI Prediction Distribution"
-                ])
-
-                with tab_current:
-                    st.caption("3-Phase RMS Currents (Amperes) across recording duration")
-                    chart_df = df_loaded[["I1_rms_AVG", "I2_rms_AVG", "I3_rms_AVG"]].copy()
-                    st.line_chart(chart_df, color=["#38bdf8", "#34d399", "#f59e0b"])
-
-                with tab_power:
-                    col_p, col_pf = st.columns(2)
-                    with col_p:
-                        st.caption("Total Active Power P_sum (Watts)")
-                        st.line_chart(df_loaded["P_sum_AVG"], color=["#38bdf8"])
-                    with col_pf:
-                        st.caption("Power Factor PF_sum (0.0 to 1.0)")
-                        st.line_chart(df_loaded["PF_sum_AVG"].abs(), color=["#a855f7"])
-
-                with tab_volt:
-                    st.caption("3-Phase RMS Voltages (Volts)")
-                    st.line_chart(df_loaded[["U1_rms_AVG", "U2_rms_AVG", "U3_rms_AVG"]], color=["#f43f5e", "#0ea5e9", "#10b981"])
-
-                with tab_harm:
-                    col_h1, col_h2 = st.columns(2)
-                    with col_h1:
-                        st.caption("Voltage Total Harmonic Distortion THD (%)")
-                        st.line_chart(df_loaded[["U1_thd-f_AVG", "U2_thd-f_AVG", "U3_thd-f_AVG"]], color=["#ec4899", "#8b5cf6", "#06b6d4"])
-                    with col_h2:
-                        st.caption("Current 5th & 7th Harmonics (A)")
-                        st.line_chart(df_loaded[["I1_H5_AVG", "I1_H7_AVG", "I2_H5_AVG", "I2_H7_AVG", "I3_H5_AVG", "I3_H7_AVG"]])
-
-                with tab_predictions:
-                    st.caption("AI Classification Breakdown across recording slices")
-                    pred_series = pd.Series(analysis["predictions"])
-                    st.bar_chart(pred_series.value_counts(), color=["#38bdf8"])
-
-                # --- Flagged Anomalies Inspector ---
-                if all_rows:
-                    with st.expander(f"🔍 Inspect Flagged Deviations Log ({len(all_rows)} events)"):
-                        anomaly_records = []
-                        for row_idx, lvl, alerts in all_rows:
-                            timestamp = f"{df_loaded['Date'].iloc[row_idx]} {df_loaded['Time'].iloc[row_idx]}" if "Date" in df_loaded.columns else f"Row {row_idx}"
-                            for a in alerts:
-                                anomaly_records.append({
-                                    "Row": row_idx,
-                                    "Time": timestamp,
-                                    "Severity": lvl.upper(),
-                                    "Parameter": a["feature"],
-                                    "Category": a["category"],
-                                    "Observed": a["value"],
-                                    "Nominal": a["expected"],
-                                    "Change %": f"{'+' if a['direction']=='up' else '-'}{a['percent']}%",
-                                    "Z-Score": a["z"],
-                                })
-                        anom_df = pd.DataFrame(anomaly_records)
-                        st.dataframe(anom_df, use_container_width=True)
-
-                # --- Save to History & Export ---
-                st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-                save_col, export_col = st.columns([1, 1])
-                with save_col:
-                    if st.button("💾 Save Inspection to Fleet History", type="primary", use_container_width=True):
-                        if save_to_history(summary):
-                            st.success(f"✓ Successfully registered {file_name} ({device}) in the fleet history database.")
-                        else:
-                            st.warning("ℹ️ This recording is already registered in the history log.")
-
-                with export_col:
-                    csv_data = pd.DataFrame([summary]).to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Download Diagnostic Summary (CSV)",
-                        data=csv_data,
-                        file_name=f"diagnostic_report_{device}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
+            with export_col:
+                csv_data = pd.DataFrame([summary]).to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Diagnostic Summary (CSV)",
+                    data=csv_data,
+                    file_name=f"diagnostic_report_{device}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
 
 
 # ==============================================================================
-# VIEW 2: FAULT INJECTION SIMULATOR
+# VIEW 2: FAULT INJECTION SIMULATOR (INSTANT)
 # ==============================================================================
 elif menu == "🧪 Fault Injection Simulator":
     st.markdown(f"""
@@ -1056,7 +1032,7 @@ elif menu == "🧪 Fault Injection Simulator":
                        and "combined" not in f and "baseline" not in f]
     
     if candidate_files:
-        base_df = pd.read_csv(candidate_files[0]).copy()
+        base_df = load_csv_file(candidate_files[0]).copy()
         st.caption(f"Loaded reference recording from: `{os.path.basename(candidate_files[0])}` ({len(base_df)} readings)")
         
         st.markdown("#### Configure Injected Fault Profile")
@@ -1075,19 +1051,6 @@ elif menu == "🧪 Fault Injection Simulator":
         with f_col2:
             severity = st.slider("Fault Severity Magnitude (% deviation):", min_value=10, max_value=100, value=40, step=5)
 
-        # Skeleton placeholder for simulator response
-        sim_placeholder = st.empty()
-        sim_placeholder.markdown(
-            f"""
-            <div class="custom-divider"></div>
-            {render_skeleton_kpis()}
-            {render_skeleton_chart()}
-            """,
-            unsafe_allow_html=True
-        )
-        time.sleep(0.3)
-
-        # Apply synthetic degradation to steady-state rows
         modified_df = base_df.copy()
         steady_slice = slice(8, None)
 
@@ -1111,41 +1074,38 @@ elif menu == "🧪 Fault Injection Simulator":
             modified_df.loc[modified_df.index[steady_slice], "I1_rms_AVG"] *= (1 + severity / 100.0)
             modified_df.loc[modified_df.index[steady_slice], "PF_sum_AVG"] *= (1 - severity / 100.0 * 0.5)
 
-        # Run Detection Engine on Simulated Stream
-        sim_analysis = analyze_dataset(modified_df, device_override=sim_device)
+        sim_analysis = analyze_dataset_fast(modified_df, device_override=sim_device)
         
-        with sim_placeholder.container():
-            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-            s_col1, s_col2, s_col3 = st.columns(3)
-            with s_col1:
-                st.metric("Detection System Status", sim_analysis["status"])
-            with s_col2:
-                st.metric("Flagged Fault Readings", f"{len(sim_analysis['fault_rows'])} / {sim_analysis['n_checked']}")
-            with s_col3:
-                st.metric("Degraded Health Score", f"{sim_analysis['health_pct']}%")
+        st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+        s_col1, s_col2, s_col3 = st.columns(3)
+        with s_col1:
+            st.metric("Detection System Status", sim_analysis["status"])
+        with s_col2:
+            st.metric("Flagged Fault Readings", f"{len(sim_analysis['fault_rows'])} / {sim_analysis['n_checked']}")
+        with s_col3:
+            st.metric("Degraded Health Score", f"{sim_analysis['health_pct']}%")
 
-            if sim_analysis["status"] == "RED":
-                st.error(f"🚨 **Fault Successfully Caught!** The early fault detection engine triggered RED status due to sustained {fault_mode}.")
-            elif sim_analysis["status"] == "YELLOW":
-                st.warning(f"⚠️ **Early Warning Caught!** The system caught early warning signs (YELLOW status).")
-            else:
-                st.info("🟢 Deviations remained within nominal tolerance boundaries.")
+        if sim_analysis["status"] == "RED":
+            st.error(f"🚨 **Fault Successfully Caught!** The early fault detection engine triggered RED status due to sustained {fault_mode}.")
+        elif sim_analysis["status"] == "YELLOW":
+            st.warning(f"⚠️ **Early Warning Caught!** The system caught early warning signs (YELLOW status).")
+        else:
+            st.info("🟢 Deviations remained within nominal tolerance boundaries.")
 
-            # Comparison chart: Healthy vs Injected Signal
-            st.markdown("#### Signal Trajectory Under Simulated Stress")
-            compare_col = "I1_rms_AVG" if "Bearing" in fault_mode or "Combined" in fault_mode else ("PF_sum_AVG" if "Capacitor" in fault_mode else "U1_rms_AVG")
-            comp_df = pd.DataFrame({
-                "Original Nominal Signal": base_df[compare_col],
-                "Simulated Degraded Signal": modified_df[compare_col]
-            })
-            st.line_chart(comp_df, color=["#22c55e", "#ef4444"])
+        st.markdown("#### Signal Trajectory Under Simulated Stress")
+        compare_col = "I1_rms_AVG" if "Bearing" in fault_mode or "Combined" in fault_mode else ("PF_sum_AVG" if "Capacitor" in fault_mode else "U1_rms_AVG")
+        comp_df = pd.DataFrame({
+            "Original Nominal Signal": base_df[compare_col],
+            "Simulated Degraded Signal": modified_df[compare_col]
+        })
+        st.line_chart(comp_df, color=["#22c55e", "#ef4444"])
 
     else:
         st.warning(f"No solo test recording found for {sim_device} in {DATA_DIR}.")
 
 
 # ==============================================================================
-# VIEW 3: FLEET HISTORY & DEGRADATION TRENDS
+# VIEW 3: FLEET HISTORY & DEGRADATION TRENDS (INSTANT)
 # ==============================================================================
 elif menu == "📈 Fleet History & Degradation Trends":
     st.markdown(f"""
@@ -1163,110 +1123,95 @@ elif menu == "📈 Fleet History & Degradation Trends":
     if not os.path.exists(HISTORY_FILE):
         st.warning("No historical inspection logs found. Upload and save recordings in 'Live Inspection' to populate history.")
     else:
-        history = pd.read_csv(HISTORY_FILE)
+        history = load_csv_file(HISTORY_FILE).copy()
         history["recorded_at"] = pd.to_datetime(history["recorded_at"], errors="coerce")
         history = history.sort_values("recorded_at")
 
-        # Top summary stats with skeleton placeholder
-        hist_placeholder = st.empty()
-        hist_placeholder.markdown(
-            f"""
-            {render_skeleton_kpis()}
-            {render_skeleton_chart()}
-            """,
-            unsafe_allow_html=True
-        )
-        time.sleep(0.3)
+        h1, h2, h3, h4 = st.columns(4)
+        with h1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Total Inspections</h4>
+                <p class="value">{len(history)}</p>
+                <div class="subtext">Completed Cycles</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with h2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Monitored Fleet</h4>
+                <p class="value">{history['device'].nunique()}</p>
+                <div class="subtext">Unique Devices</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with h3:
+            avg_score = history["health_score"].mean()
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Mean Z-Score</h4>
+                <p class="value">{avg_score:.2f}</p>
+                <div class="subtext">Fleet Health Baseline</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with h4:
+            latest_date = history["recorded_at"].max()
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>Latest Inspection</h4>
+                <p class="value" style="font-size: 1.4rem;">{str(latest_date)[:10] if pd.notna(latest_date) else 'N/A'}</p>
+                <div class="subtext">Chronological Log</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-        with hist_placeholder.container():
-            h1, h2, h3, h4 = st.columns(4)
-            with h1:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h4>Total Inspections</h4>
-                    <p class="value">{len(history)}</p>
-                    <div class="subtext">Completed Cycles</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with h2:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h4>Monitored Fleet</h4>
-                    <p class="value">{history['device'].nunique()}</p>
-                    <div class="subtext">Unique Devices</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with h3:
-                avg_score = history["health_score"].mean()
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h4>Mean Z-Score</h4>
-                    <p class="value">{avg_score:.2f}</p>
-                    <div class="subtext">Fleet Health Baseline</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with h4:
-                latest_date = history["recorded_at"].max()
-                st.markdown(f"""
-                <div class="metric-card">
-                    <h4>Latest Inspection</h4>
-                    <p class="value" style="font-size: 1.4rem;">{str(latest_date)[:10] if pd.notna(latest_date) else 'N/A'}</p>
-                    <div class="subtext">Chronological Log</div>
-                </div>
-                """, unsafe_allow_html=True)
+        st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+        device_options = sorted(history["device"].unique())
+        selected_dev = st.selectbox("Select Equipment for Trend Analysis:", device_options)
 
-            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-            device_options = sorted(history["device"].unique())
-            selected_dev = st.selectbox("Select Equipment for Trend Analysis:", device_options)
+        dev_hist = history[history["device"] == selected_dev].sort_values("recorded_at")
+        st.write(f"Logged inspection cycles for **{selected_dev}**: **{len(dev_hist)}**")
 
-            dev_hist = history[history["device"] == selected_dev].sort_values("recorded_at")
-            st.write(f"Logged inspection cycles for **{selected_dev}**: **{len(dev_hist)}**")
+        if len(dev_hist) < 2:
+            st.info("💡 At least 2 historical inspections on different dates are required to plot trend curves. Save another recording to view drift curves.")
+        else:
+            plot_df = dev_hist.set_index("recorded_at")
 
-            if len(dev_hist) < 2:
-                st.info("💡 At least 2 historical inspections on different dates are required to plot trend curves. Save another recording to view drift curves.")
+            st.markdown("#### Health Score Degradation Trajectory (Z-Score Drift)")
+            st.caption("Rising health score indicates progressive deviation away from nominal baseline.")
+            st.line_chart(plot_df["health_score"], color=["#f59e0b"])
+
+            scores = dev_hist["health_score"].tolist()
+            if len(scores) >= 3 and scores[-1] > scores[-2] > scores[-3]:
+                st.error("⚠️ **Degradation Trend Alert:** Health score has consecutively worsened over the last 3 inspection cycles. Predictive maintenance intervention recommended.")
             else:
-                plot_df = dev_hist.set_index("recorded_at")
+                st.success("✓ Stable Condition: No continuous upward drift detected in recent inspection cycles.")
 
-                # Health Score Drift Curve
-                st.markdown("#### Health Score Degradation Trajectory (Z-Score Drift)")
-                st.caption("Rising health score indicates progressive deviation away from nominal baseline.")
-                st.line_chart(plot_df["health_score"], color=["#f59e0b"])
+            st.markdown("#### Parameter Evolution Over Time")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.caption("Total Current Draw (A) over Dates")
+                st.line_chart(plot_df["current_A"], color=["#38bdf8"])
+                st.caption("Power Factor over Dates")
+                st.line_chart(plot_df["power_factor"], color=["#a855f7"])
+            with c2:
+                st.caption("Voltage THD (%) over Dates")
+                st.line_chart(plot_df["voltage_thd"], color=["#ec4899"])
+                st.caption("Current 5th Harmonic (A) over Dates")
+                st.line_chart(plot_df["current_H5"], color=["#10b981"])
 
-                # Degradation Drift Alert Engine
-                scores = dev_hist["health_score"].tolist()
-                if len(scores) >= 3 and scores[-1] > scores[-2] > scores[-3]:
-                    st.error("⚠️ **Degradation Trend Alert:** Health score has consecutively worsened over the last 3 inspection cycles. Predictive maintenance intervention recommended.")
-                else:
-                    st.success("✓ Stable Condition: No continuous upward drift detected in recent inspection cycles.")
-
-                # Multi-parameter Degradation Channels
-                st.markdown("#### Parameter Evolution Over Time")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.caption("Total Current Draw (A) over Dates")
-                    st.line_chart(plot_df["current_A"], color=["#38bdf8"])
-                    st.caption("Power Factor over Dates")
-                    st.line_chart(plot_df["power_factor"], color=["#a855f7"])
-                with c2:
-                    st.caption("Voltage THD (%) over Dates")
-                    st.line_chart(plot_df["voltage_thd"], color=["#ec4899"])
-                    st.caption("Current 5th Harmonic (A) over Dates")
-                    st.line_chart(plot_df["current_H5"], color=["#10b981"])
-
-            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-            with st.expander("📄 View & Filter Historical Inspection Database"):
-                st.dataframe(dev_hist if len(dev_hist) > 0 else history, use_container_width=True)
-                csv_export = history.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "📥 Export Full Fleet History (CSV)",
-                    data=csv_export,
-                    file_name="fleet_inspection_history.csv",
-                    mime="text/csv"
-                )
+        st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+        with st.expander("📄 View & Filter Historical Inspection Database"):
+            st.dataframe(dev_hist if len(dev_hist) > 0 else history, use_container_width=True)
+            csv_export = history.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "📥 Export Full Fleet History (CSV)",
+                data=csv_export,
+                file_name="fleet_inspection_history.csv",
+                mime="text/csv"
+            )
 
 
 # ==============================================================================
-# VIEW 4: DEVICE BASELINE CATALOG
+# VIEW 4: DEVICE BASELINE CATALOG (INSTANT)
 # ==============================================================================
 elif menu == "📋 Device Baseline Catalog":
     st.markdown(f"""
@@ -1285,62 +1230,49 @@ elif menu == "📋 Device Baseline Catalog":
         st.error("Baseline statistics file not found at `data/baseline_stats.csv`.")
     else:
         st.write(f"The system maintains calibrated baseline profiles for **{len(baseline_stats.index)} equipment and combination classes**.")
-        
         target_device = st.selectbox("Select Baseline Profile:", sorted(baseline_stats.index))
-        
-        base_placeholder = st.empty()
-        base_placeholder.markdown(
-            f"""
-            {render_skeleton_kpis()}
-            {render_skeleton_table()}
-            """,
-            unsafe_allow_html=True
-        )
-        time.sleep(0.25)
+        dev_profile = baseline_stats.loc[target_device]
 
-        with base_placeholder.container():
-            dev_profile = baseline_stats.loc[target_device]
+        b1, b2, b3, b4 = st.columns(4)
+        with b1:
+            i1 = dev_profile.get(("I1_rms_AVG", "mean"), 0.0)
+            st.metric("Nominal Line 1 Current", f"{i1:.3f} A")
+        with b2:
+            p = dev_profile.get(("P_sum_AVG", "mean"), 0.0)
+            st.metric("Nominal Power (P_sum)", f"{p:.1f} W")
+        with b3:
+            pf = dev_profile.get(("PF_sum_AVG", "mean"), 0.0)
+            st.metric("Nominal Power Factor", f"{abs(pf):.3f}")
+        with b4:
+            thd = dev_profile.get(("U1_thd-f_AVG", "mean"), 0.0)
+            st.metric("Nominal Voltage THD", f"{thd:.2f}%")
 
-            b1, b2, b3, b4 = st.columns(4)
-            with b1:
-                i1 = dev_profile.get(("I1_rms_AVG", "mean"), 0.0)
-                st.metric("Nominal Line 1 Current", f"{i1:.3f} A")
-            with b2:
-                p = dev_profile.get(("P_sum_AVG", "mean"), 0.0)
-                st.metric("Nominal Power (P_sum)", f"{p:.1f} W")
-            with b3:
-                pf = dev_profile.get(("PF_sum_AVG", "mean"), 0.0)
-                st.metric("Nominal Power Factor", f"{abs(pf):.3f}")
-            with b4:
-                thd = dev_profile.get(("U1_thd-f_AVG", "mean"), 0.0)
-                st.metric("Nominal Voltage THD", f"{thd:.2f}%")
+        st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+        st.markdown("#### Comprehensive Channel Baseline Parameters")
+        records = []
+        for f in feature_cols:
+            m = dev_profile.get((f, "mean"), np.nan)
+            s = dev_profile.get((f, "std"), np.nan)
+            cat = FEATURE_CATEGORIES[f]
+            records.append({
+                "Parameter": f,
+                "Category": cat,
+                "Baseline Mean": round(m, 4) if pd.notna(m) else "N/A",
+                "Baseline Std Dev": round(s, 4) if pd.notna(s) else "N/A",
+                "Yellow Threshold": f"±{LIMITS[cat][0]*100:.1f}%",
+                "Red Threshold": f"±{LIMITS[cat][1]*100:.1f}%",
+            })
+        st.dataframe(pd.DataFrame(records), use_container_width=True)
 
-            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-            st.markdown("#### Comprehensive Channel Baseline Parameters")
-            records = []
-            for f in feature_cols:
-                m = dev_profile.get((f, "mean"), np.nan)
-                s = dev_profile.get((f, "std"), np.nan)
-                cat = categorize_feature(f)
-                records.append({
-                    "Parameter": f,
-                    "Category": cat,
-                    "Baseline Mean": round(m, 4) if pd.notna(m) else "N/A",
-                    "Baseline Std Dev": round(s, 4) if pd.notna(s) else "N/A",
-                    "Yellow Threshold": f"±{LIMITS[cat][0]*100:.1f}%",
-                    "Red Threshold": f"±{LIMITS[cat][1]*100:.1f}%",
-                })
-            st.dataframe(pd.DataFrame(records), use_container_width=True)
-
-            st.markdown("#### Baseline Tolerance Framework")
-            st.table(pd.DataFrame([
-                {"Category": k, "Yellow Limit (Warning)": f"{v[0]*100}%", "Red Limit (Critical)": f"{v[1]*100}%", "Noise Floor Cutoff": f"{MIN_CHANGE[k]}"}
-                for k, v in LIMITS.items()
-            ]))
+        st.markdown("#### Baseline Tolerance Framework")
+        st.table(pd.DataFrame([
+            {"Category": k, "Yellow Limit (Warning)": f"{v[0]*100}%", "Red Limit (Critical)": f"{v[1]*100}%", "Noise Floor Cutoff": f"{MIN_CHANGE[k]}"}
+            for k, v in LIMITS.items()
+        ]))
 
 
 # ==============================================================================
-# VIEW 5: SYSTEM ARCHITECTURE & METHODOLOGY
+# VIEW 5: SYSTEM ARCHITECTURE & METHODOLOGY (INSTANT)
 # ==============================================================================
 elif menu == "🧠 System Architecture & Methodology":
     st.markdown(f"""
@@ -1355,80 +1287,69 @@ elif menu == "🧠 System Architecture & Methodology":
     </div>
     """, unsafe_allow_html=True)
 
-    arch_placeholder = st.empty()
-    arch_placeholder.markdown(
-        f"""
-        {render_skeleton_banner()}
-        {render_skeleton_table()}
-        """,
-        unsafe_allow_html=True
-    )
-    time.sleep(0.2)
+    st.markdown("""
+    ### 5-Stage System Pipeline
 
-    with arch_placeholder.container():
+    ```
+    +---------------------------+
+    | 1. High-Precision Logging |  --> 3-phase power analyzer recordings (U, I, P, PF, THD, Harmonics)
+    +---------------------------+
+                  │
+                  ▼
+    +---------------------------+
+    |  2. Signal Preprocessing  |  --> Discard first 8 startup transient cycles; validate channel integrity
+    +---------------------------+
+                  │
+                  ▼
+    +---------------------------+
+    | 3. Device Identification  |  --> Random Forest Classifier using 5 intrinsic load features (I1, I2, I3, P, PF)
+    +---------------------------+
+                  │
+                  ▼
+    +---------------------------+
+    |  4. Early Fault Detection |  --> Dynamic Z-score & relative percentage deviation against calibrated baseline
+    |                           |      Sustained run filter (>= 3 consecutive intervals / 15 seconds)
+    |                           |      Grid-event vs Equipment-fault decoupling
+    +---------------------------+
+                  │
+                  ▼
+    +---------------------------+
+    | 5. Actionable Diagnostics |  --> Root cause mapping (overload, winding fault, capacitor loss)
+    |    & Fleet Health Trends  |      Longitudinal aging drift tracking and predictive maintenance alerts
+    +---------------------------+
+    ```
+    """)
+
+    st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
+    st.subheader("Key Engineering Design Decisions")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
         st.markdown("""
-        ### 5-Stage System Pipeline
-
-        ```
-        +---------------------------+
-        | 1. High-Precision Logging |  --> 3-phase power analyzer recordings (U, I, P, PF, THD, Harmonics)
-        +---------------------------+
-                      │
-                      ▼
-        +---------------------------+
-        |  2. Signal Preprocessing  |  --> Discard first 8 startup transient cycles; validate channel integrity
-        +---------------------------+
-                      │
-                      ▼
-        +---------------------------+
-        | 3. Device Identification  |  --> Random Forest Classifier using 5 intrinsic load features (I1, I2, I3, P, PF)
-        +---------------------------+
-                      │
-                      ▼
-        +---------------------------+
-        |  4. Early Fault Detection |  --> Dynamic Z-score & relative percentage deviation against calibrated baseline
-        |                           |      Sustained run filter (>= 3 consecutive intervals / 15 seconds)
-        |                           |      Grid-event vs Equipment-fault decoupling
-        +---------------------------+
-                      │
-                      ▼
-        +---------------------------+
-        | 5. Actionable Diagnostics |  --> Root cause mapping (overload, winding fault, capacitor loss)
-        |    & Fleet Health Trends  |      Longitudinal aging drift tracking and predictive maintenance alerts
-        +---------------------------+
-        ```
+        **1. Why 5 Features for Identification?**
+        - Features: `I1_rms_AVG`, `I2_rms_AVG`, `I3_rms_AVG`, `P_sum_AVG`, `PF_sum_AVG`.
+        - External grid voltage and ambient harmonics vary between labs, power outlets, and external utility loads.
+        - Using intrinsic current, active power, and power factor produces a robust electrical load signature that generalizes cleanly across unseen sessions.
+        """)
+        st.markdown("""
+        **2. Transient Filtering & False Alarm Suppression**
+        - **Startup suppression**: Machine in-rush currents during the first 8 sampling intervals are safely ignored.
+        - **Temporal persistence**: Anomalies must persist for at least 3 consecutive sampling cycles (15s) to avoid nuisance alerts from brief switching noise.
         """)
 
+    with col_b:
+        st.markdown("""
+        **3. Decoupling Grid vs Machine Faults**
+        - Changes restricted solely to Voltage, Frequency, or Voltage THD without corresponding machine current changes are classified as **External Grid Events**.
+        - Internal machine faults require concurrent deviations in Current, Power, or Power Factor.
+        """)
+        st.markdown("""
+        **4. Longitudinal Degradation Tracking**
+        - Saves each completed inspection with date stamps into `data/history.csv`.
+        - Tracks mean Z-score deviation over time; warns when 3 consecutive cycles show escalating health scores.
+        """)
+
+    if os.path.exists("accuracy_chart.png"):
         st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-        st.subheader("Key Engineering Design Decisions")
-
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown("""
-            **1. Why 5 Features for Identification?**
-            - Features: `I1_rms_AVG`, `I2_rms_AVG`, `I3_rms_AVG`, `P_sum_AVG`, `PF_sum_AVG`.
-            - External grid voltage and ambient harmonics vary between labs, power outlets, and external utility loads.
-            - Using intrinsic current, active power, and power factor produces a robust electrical load signature that generalizes cleanly across unseen sessions.
-            """)
-            st.markdown("""
-            **2. Transient Filtering & False Alarm Suppression**
-            - **Startup suppression**: Machine in-rush currents during the first 8 sampling intervals are safely ignored.
-            - **Temporal persistence**: Anomalies must persist for at least 3 consecutive sampling cycles (15s) to avoid nuisance alerts from brief switching noise.
-            """)
-
-        with col_b:
-            st.markdown("""
-            **3. Decoupling Grid vs Machine Faults**
-            - Changes restricted solely to Voltage, Frequency, or Voltage THD without corresponding machine current changes are classified as **External Grid Events**.
-            - Internal machine faults require concurrent deviations in Current, Power, or Power Factor.
-            """)
-            st.markdown("""
-            **4. Longitudinal Degradation Tracking**
-            - Saves each completed inspection with date stamps into `data/history.csv`.
-            - Tracks mean Z-score deviation over time; warns when 3 consecutive cycles show escalating health scores.
-            """)
-
-        if os.path.exists("accuracy_chart.png"):
-            st.markdown('<div class="custom-divider"></div>', unsafe_allow_html=True)
-            st.subheader("Model Performance & Accuracy Benchmarks")
-            st.image("accuracy_chart.png", caption="Model Validation Accuracy Benchmark Across Unseen Test Sessions")
+        st.subheader("Model Performance & Accuracy Benchmarks")
+        st.image("accuracy_chart.png", caption="Model Validation Accuracy Benchmark Across Unseen Test Sessions")

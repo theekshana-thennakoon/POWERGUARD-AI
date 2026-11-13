@@ -267,18 +267,83 @@ namespace PowerGuardLauncher
 
         static void OpenBrowser(string url)
         {
+            // Try browsers in order: Chrome → Edge (tab mode) → Firefox → explorer fallback
+            // Always use --new-tab / -new-tab to open inside the browser, NOT in app/standalone mode
+
+            string[] chromePaths = new string[]
+            {
+                @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    @"Google\Chrome\Application\chrome.exe")
+            };
+
+            string[] edgePaths = new string[]
+            {
+                @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                @"C:\Program Files\Microsoft\Edge\Application\msedge.exe"
+            };
+
+            string[] firefoxPaths = new string[]
+            {
+                @"C:\Program Files\Mozilla Firefox\firefox.exe",
+                @"C:\Program Files (x86)\Mozilla Firefox\firefox.exe"
+            };
+
+            // 1. Try Chrome (--new-tab opens a real browser tab)
+            foreach (string chrome in chromePaths)
+            {
+                if (File.Exists(chrome))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = chrome,
+                        Arguments = "--new-tab " + url,
+                        UseShellExecute = false
+                    });
+                    return;
+                }
+            }
+
+            // 2. Try Edge with --new-tab (NOT app mode)
+            foreach (string edge in edgePaths)
+            {
+                if (File.Exists(edge))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = edge,
+                        Arguments = "--new-tab " + url,
+                        UseShellExecute = false
+                    });
+                    return;
+                }
+            }
+
+            // 3. Try Firefox
+            foreach (string ff in firefoxPaths)
+            {
+                if (File.Exists(ff))
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = ff,
+                        Arguments = "-new-tab " + url,
+                        UseShellExecute = false
+                    });
+                    return;
+                }
+            }
+
+            // 4. Final fallback: explorer.exe (always opens default browser in normal window)
             try
             {
-                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-            }
-            catch
-            {
-                try
+                Process.Start(new ProcessStartInfo("explorer.exe", url)
                 {
-                    Process.Start("cmd.exe", "/c start " + url);
-                }
-                catch { }
+                    UseShellExecute = false
+                });
             }
+            catch { }
         }
 
         static string FindPythonExecutable()
