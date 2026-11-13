@@ -2,6 +2,7 @@ import os
 import glob
 import re
 import time
+import base64
 import warnings
 from collections import Counter
 import numpy as np
@@ -15,9 +16,11 @@ warnings.filterwarnings("ignore")
 # ---------------------------------------------------------
 # Page Configuration & Industrial Modern Styling
 # ---------------------------------------------------------
+LOGO_PATH = "Logo.PNG"
+
 st.set_page_config(
     page_title="PowerGuard AI | Next-Gen Electrical Diagnostics",
-    page_icon="⚡",
+    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -40,6 +43,20 @@ st.markdown("""
         padding-top: 1.5rem;
         padding-bottom: 3rem;
         max-width: 1400px;
+    }
+
+    /* Completely Remove Deploy Option & Clean Header Toolbar */
+    [data-testid="stDeployButton"],
+    .stDeployButton,
+    button[title="Deploy this app"],
+    [data-testid="stAppDeployButton"],
+    div[data-testid="stToolbar"] > div:first-child:not(:last-child),
+    header [data-testid="stToolbar"] > span:first-child,
+    header [data-testid="stToolbar"] button:first-child:not(:last-child) {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
     }
 
     /* Shimmer Skeleton Loaders */
@@ -92,7 +109,7 @@ st.markdown("""
         background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.8) 50%, rgba(14, 116, 144, 0.3) 100%);
         border: 1px solid rgba(56, 189, 248, 0.3);
         border-radius: 16px;
-        padding: 24px 30px;
+        padding: 22px 28px;
         margin-bottom: 25px;
         box-shadow: 0 10px 30px -10px rgba(2, 132, 199, 0.3);
         backdrop-filter: blur(12px);
@@ -111,18 +128,18 @@ st.markdown("""
         pointer-events: none;
     }
     .hero-title {
-        font-size: 2.2rem;
+        font-size: 2.1rem;
         font-weight: 800;
         background: linear-gradient(90deg, #38bdf8 0%, #a5b4fc 50%, #34d399 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        margin: 0 0 6px 0;
+        margin: 0;
         letter-spacing: -0.02em;
     }
     .hero-sub {
         color: #94a3b8;
-        font-size: 1.0rem;
-        margin: 0;
+        font-size: 0.95rem;
+        margin: 4px 0 0 0;
         font-weight: 400;
     }
     .hero-tag {
@@ -138,7 +155,7 @@ st.markdown("""
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        margin-top: 10px;
+        margin-top: 8px;
     }
 
     /* Modern Glassmorphic Metric Cards */
@@ -286,6 +303,27 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# Logo Base64 Loader & Snippets
+# ---------------------------------------------------------
+@st.cache_data
+def get_logo_base64():
+    """Reads Logo.PNG and converts it into a base64 Data URI."""
+    if os.path.exists(LOGO_PATH):
+        try:
+            with open(LOGO_PATH, "rb") as f:
+                encoded = base64.b64encode(f.read()).decode("utf-8")
+                return f"data:image/png;base64,{encoded}"
+        except Exception:
+            return None
+    return None
+
+logo_b64 = get_logo_base64()
+
+# Small Logo HTML Elements
+sidebar_logo_tag = f'<img src="{logo_b64}" alt="Logo" style="width: 40px; height: 40px; object-fit: contain; border-radius: 8px; background: rgba(255,255,255,0.06); padding: 3px; border: 1px solid rgba(56, 189, 248, 0.25); box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);">' if logo_b64 else '<span style="font-size: 2.0rem;">⚡</span>'
+hero_logo_tag = f'<img src="{logo_b64}" alt="Logo" style="width: 48px; height: 48px; object-fit: contain; border-radius: 10px; background: rgba(255,255,255,0.06); padding: 4px; border: 1px solid rgba(56, 189, 248, 0.3); box-shadow: 0 0 14px rgba(56, 189, 248, 0.2);">' if logo_b64 else ''
 
 # ---------------------------------------------------------
 # Constants & Model Loading
@@ -574,14 +612,14 @@ def analyze_dataset(df, device_override=None):
 
 
 # ---------------------------------------------------------
-# Sidebar Navigation & System Telemetry
+# Sidebar Navigation & System Telemetry with Small Logo
 # ---------------------------------------------------------
 with st.sidebar:
-    st.markdown("""
+    st.markdown(f"""
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-        <span style="font-size: 2.2rem;">⚡</span>
+        {sidebar_logo_tag}
         <div>
-            <h3 style="margin: 0; font-size: 1.3rem; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">POWERGUARD</h3>
+            <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #f8fafc; letter-spacing: -0.02em;">POWERGUARD</h3>
             <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">AI HEALTH ENGINE</span>
         </div>
     </div>
@@ -630,16 +668,19 @@ with st.sidebar:
 # VIEW 1: LIVE INSPECTION & DIAGNOSTICS
 # ==============================================================================
 if menu == "⚡ Live Inspection & Diagnostics":
-    # Top Hero Banner
-    st.markdown("""
+    # Top Hero Banner with Small Integrated Logo
+    st.markdown(f"""
     <div class="hero-banner">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
-            <div>
-                <h1 class="hero-title">POWERGUARD AI</h1>
-                <p class="hero-sub">Industrial Device Identification & Sub-second Early Fault Detection Platform</p>
-                <div class="hero-tag">
-                    <span class="pulse-dot" style="color: #38bdf8;"></span>
-                    3-Phase Electrical Signature Diagnostics
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                {hero_logo_tag}
+                <div>
+                    <h1 class="hero-title">POWERGUARD AI</h1>
+                    <p class="hero-sub">Industrial Device Identification & Sub-second Early Fault Detection Platform</p>
+                    <div class="hero-tag">
+                        <span class="pulse-dot" style="color: #38bdf8;"></span>
+                        3-Phase Electrical Signature Diagnostics
+                    </div>
                 </div>
             </div>
             <div style="text-align: right;">
@@ -946,10 +987,15 @@ if menu == "⚡ Live Inspection & Diagnostics":
 # VIEW 2: FAULT INJECTION SIMULATOR
 # ==============================================================================
 elif menu == "🧪 Fault Injection Simulator":
-    st.markdown("""
+    st.markdown(f"""
     <div class="hero-banner">
-        <h1 class="hero-title">FAULT INJECTION SANDBOX</h1>
-        <p class="hero-sub">Simulate synthetic electrical & mechanical faults on healthy machinery to validate detection response.</p>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            {hero_logo_tag}
+            <div>
+                <h1 class="hero-title">FAULT INJECTION SANDBOX</h1>
+                <p class="hero-sub">Simulate synthetic electrical & mechanical faults on healthy machinery to validate detection response.</p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1055,10 +1101,15 @@ elif menu == "🧪 Fault Injection Simulator":
 # VIEW 3: FLEET HISTORY & DEGRADATION TRENDS
 # ==============================================================================
 elif menu == "📈 Fleet History & Degradation Trends":
-    st.markdown("""
+    st.markdown(f"""
     <div class="hero-banner">
-        <h1 class="hero-title">FLEET HEALTH & TRENDS</h1>
-        <p class="hero-sub">Longitudinal equipment aging curves, multi-session drift monitoring, and predictive warnings.</p>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            {hero_logo_tag}
+            <div>
+                <h1 class="hero-title">FLEET HEALTH & TRENDS</h1>
+                <p class="hero-sub">Longitudinal equipment aging curves, multi-session drift monitoring, and predictive warnings.</p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1171,10 +1222,15 @@ elif menu == "📈 Fleet History & Degradation Trends":
 # VIEW 4: DEVICE BASELINE CATALOG
 # ==============================================================================
 elif menu == "📋 Device Baseline Catalog":
-    st.markdown("""
+    st.markdown(f"""
     <div class="hero-banner">
-        <h1 class="hero-title">EQUIPMENT BASELINE CATALOG</h1>
-        <p class="hero-sub">Nominal baseline electrical statistics (Mean & Standard Deviation) across 25 device classes.</p>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            {hero_logo_tag}
+            <div>
+                <h1 class="hero-title">EQUIPMENT BASELINE CATALOG</h1>
+                <p class="hero-sub">Nominal baseline electrical statistics (Mean & Standard Deviation) across 25 device classes.</p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1240,10 +1296,15 @@ elif menu == "📋 Device Baseline Catalog":
 # VIEW 5: SYSTEM ARCHITECTURE & METHODOLOGY
 # ==============================================================================
 elif menu == "🧠 System Architecture & Methodology":
-    st.markdown("""
+    st.markdown(f"""
     <div class="hero-banner">
-        <h1 class="hero-title">SYSTEM ARCHITECTURE & METHODOLOGY</h1>
-        <p class="hero-sub">Complete engineering workflow: high-frequency sensing, AI classification, statistical thresholding, and fleet analytics.</p>
+        <div style="display: flex; align-items: center; gap: 16px;">
+            {hero_logo_tag}
+            <div>
+                <h1 class="hero-title">SYSTEM ARCHITECTURE & METHODOLOGY</h1>
+                <p class="hero-sub">Complete engineering workflow: high-frequency sensing, AI classification, statistical thresholding, and fleet analytics.</p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
